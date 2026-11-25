@@ -17,10 +17,7 @@
 </p>
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="Bilder/einstellungen-dunkel.png">
-    <img src="Bilder/einstellungen-hell.png" width="380" alt="Einstellungen von Queet">
-  </picture>
+  <img src="Bilder/einstellungen.png" width="380" alt="Einstellungen von Queet">
   <img src="Bilder/rechtsklick.png" width="380" alt="Rechtsklick auf eine App im Finder mit „App beenden“">
 </p>
 
