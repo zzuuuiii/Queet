@@ -107,6 +107,11 @@ func pruefen(_ pid: pid_t, panel: Bool = false, versteckt: Bool = false, grund: 
     guard let app0 = NSRunningApplication(processIdentifier: pid) else { return }
     geplant.insert(pid)
     let f = frist(app0, panel: panel)
+    // Normales Schließen des letzten Fensters: die App dahinter sofort nach vorn holen, nicht erst
+    // nach dem Beenden (sonst bleibt der Fokus kurz bei der fensterlosen App)
+    if !panel, f == kurzeFrist(), app0.isActive, kandidat(app0), !(versteckt ? (!app0.isHidden || hatMinimiertes(app0)) : hatFenster(app0)) {
+        if let naechste = appDahinter(pid) { nachVorn(naechste) }
+    }
     // Zweimal nachsehen: nach der Gnadenfrist und kurz danach noch einmal
     func offen(_ app: NSRunningApplication) -> Bool {
         versteckt ? (!app.isHidden || hatMinimiertes(app)) : hatFenster(app)
@@ -123,6 +128,25 @@ func pruefen(_ pid: pid_t, panel: Bool = false, versteckt: Bool = false, grund: 
             app.terminate() // wie Befehl-Q: die App darf nachfragen (z. B. ungesicherte Änderungen)
         }
     }
+}
+
+/// Die App mit dem obersten sichtbaren Fenster hinter der App pid (wie macOS nach dem Beenden)
+func appDahinter(_ pid: pid_t) -> NSRunningApplication? {
+    let liste = (CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]) ?? []
+    for w in liste where (w[kCGWindowLayer as String] as? Int) == 0 {
+        guard let p = w[kCGWindowOwnerPID as String] as? pid_t, p != pid, p != getpid(),
+              let app = NSRunningApplication(processIdentifier: p), app.activationPolicy == .regular, !app.isHidden else { continue }
+        return app
+    }
+    return NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder").first
+}
+
+/// Holt eine App nach vorn. Über die Bedienungshilfen, weil macOS Wechsel von Hintergrund-Apps
+/// sonst ignorieren kann.
+func nachVorn(_ app: NSRunningApplication) {
+    let el = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(el, 0.5)
+    if AXUIElementSetAttributeValue(el, kAXFrontmostAttribute as CFString, kCFBooleanTrue) != .success { app.activate() }
 }
 
 /// Nur normale Dock-Apps. Menüleisten- und Hintergrund-Apps (rcmd, BarDrop, Helfer) nie.
@@ -311,7 +335,10 @@ func starteHintergrund() {
     }
     // Apps, die beim Start noch nicht erreichbar waren, beim Aktivieren nachholen
     nc.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { n in
-        if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication { beobachten(app) }
+        if let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication {
+            beobachten(app)
+            if app.processIdentifier != getpid() { letzteFremdeApp = app }
+        }
     }
 
     nc.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main) { n in
@@ -348,10 +375,18 @@ func starten() {
 final class Dienste: NSObject {
     @objc func appBeenden(_ pb: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
         let urls = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        // macOS holt Queet für den Dienst nach vorn: Fokus gleich zurück an den Finder
+        let vorher = letzteFremdeApp
+        if let vorher { nachVorn(vorher) }
         for u in urls { radikalBeenden(u.resolvingSymlinksInPath().path) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            if NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid(), let vorher, !vorher.isTerminated { nachVorn(vorher) }
+        }
     }
 }
 let dienste = Dienste()
+/// Zuletzt aktive App außer Queet (für den Dienst)
+var letzteFremdeApp: NSRunningApplication?
 
 /// Alle eigenen Prozesse, deren Programmdatei im Paket liegt
 func prozesseIn(_ paket: String) -> [pid_t] {
