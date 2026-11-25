@@ -1,0 +1,52 @@
+{
+  "groups": [
+    {
+      "layers": [
+        {
+          "image-name": "Ringe.png",
+          "name": "Ringe",
+          "glass": true,
+          "opacity": 0.8
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.4
+      },
+      "specular": true
+    },
+    {
+      "layers": [
+        {
+          "image-name": "X.svg",
+          "name": "X",
+          "glass": false
+        },
+        {
+          "image-name": "Punkt.svg",
+          "name": "Punkt",
+          "glass": true
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.25
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "specular": true
+    }
+  ],
+  "supported-platforms": {
+    "squares": [
+      "macOS"
+    ]
+  },
+  "fill": "automatic"
+}
