@@ -104,7 +104,7 @@ enum EinstellungenApp {
         return haupt
     }
 
-    static let groesse = NSSize(width: 520, height: 660)
+    static let groesse = NSSize(width: 440, height: 580)
 
     /// Fenster wie die Einstellungen von BarDrop: durchscheinend, hohe Titelleiste ohne Titel
     private static func fensterBauen() -> NSWindow {
@@ -208,7 +208,7 @@ struct EinstellungenRoot: View {
                         .padding(.horizontal, SettingsTheme.rowPadding)
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
-                ForEach(Array(einstellungen.verlauf.prefix(5)), id: \.id) { e in
+                ForEach(Array(einstellungen.verlauf.prefix(3)), id: \.id) { e in
                     VerlaufZeile(bundleID: e.id, zeit: e.zeit, einstellungen: einstellungen)
                 }
             }
