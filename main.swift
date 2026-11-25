@@ -341,6 +341,71 @@ func starten() {
     DispatchQueue.main.asyncAfter(deadline: .now() + 5) { starten() }
 }
 
+// MARK: Rechtsklick im Finder: „App beenden“
+
+/// Erst normal beenden, dann hart, zuletzt übrige Hilfsprozesse aus dem Programmpaket.
+/// Fragt die App nach (z. B. Sichern-Dialog), wartet Queet, bis man sich entschieden hat.
+final class Dienste: NSObject {
+    @objc func appBeenden(_ pb: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        let urls = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        for u in urls { radikalBeenden(u.resolvingSymlinksInPath().path) }
+    }
+}
+let dienste = Dienste()
+
+/// Alle eigenen Prozesse, deren Programmdatei im Paket liegt
+func prozesseIn(_ paket: String) -> [pid_t] {
+    var pids = [pid_t](repeating: 0, count: Int(proc_listallpids(nil, 0)) + 64)
+    let anzahl = Int(proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size)))
+    var puffer = [CChar](repeating: 0, count: 4096)
+    return pids.prefix(max(anzahl, 0)).filter { pid in
+        pid > 0 && pid != getpid() && proc_pidpath(pid, &puffer, UInt32(puffer.count)) > 0
+            && String(cString: puffer).hasPrefix(paket + "/")
+    }
+}
+
+/// Zeigt die App gerade einen Dialog oder ein Blatt (Sichern, Beenden bestätigen)?
+func fragtNach(_ app: NSRunningApplication) -> Bool {
+    let el = AXUIElementCreateApplication(app.processIdentifier)
+    AXUIElementSetMessagingTimeout(el, 0.5)
+    guard let fenster: [AXUIElement] = attr(el, kAXWindowsAttribute) else { return false }
+    return fenster.contains { f in
+        (attr(f, kAXSubroleAttribute) as String?) == kAXDialogSubrole
+            || ((attr(f, kAXChildrenAttribute) as [AXUIElement]?) ?? []).contains { (attr($0, kAXRoleAttribute) as String?) == kAXSheetRole }
+    }
+}
+
+func radikalBeenden(_ paket: String) {
+    guard paket != Bundle.main.bundlePath else { return }
+    let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.resolvingSymlinksInPath().path == paket }
+    guard !apps.isEmpty || !prozesseIn(paket).isEmpty else { return }
+    log("App beenden (Finder): \((paket as NSString).lastPathComponent)")
+    apps.forEach { $0.terminate() }
+    nachsehen(paket, apps, schritt: 1)
+}
+
+private func nachsehen(_ paket: String, _ apps: [NSRunningApplication], schritt: Int) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        let offen = apps.filter { !$0.isTerminated }
+        if !offen.isEmpty {
+            // Ohne Freigabe sieht Queet keine Dialoge, dann nie hart beenden (ungesicherte Dokumente)
+            guard AXIsProcessTrusted() else { log("Hart beenden übersprungen: keine Freigabe"); return }
+            if offen.contains(where: fragtNach) {
+                if schritt < 600 { nachsehen(paket, apps, schritt: schritt + 1) } // bis zu 5 min
+                return
+            }
+            if schritt < 6 { nachsehen(paket, apps, schritt: schritt + 1); return } // 3 s Zeit
+            for a in offen { log("Hart beendet: \(a.bundleIdentifier ?? "?")"); a.forceTerminate() }
+        }
+        // Hilfsprozesse kurz nachlaufen lassen, dann erst sanft, dann hart
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            let rest = prozesseIn(paket); guard !rest.isEmpty else { return }
+            log("Beende \(rest.count) übrige Prozesse"); rest.forEach { kill($0, SIGTERM) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { prozesseIn(paket).forEach { kill($0, SIGKILL) } }
+        }
+    }
+}
+
 // MARK: Start
 
 /// Beim Anmelden trägt Queet sich selbst ein (Systemeinstellungen > Allgemein > Anmeldeobjekte).
@@ -420,6 +485,7 @@ final class Hintergrund: NSObject, NSApplicationDelegate {
     }
 }
 let hintergrund = Hintergrund()
+NSApplication.shared.servicesProvider = dienste
 
 if CommandLine.arguments.contains("--pruefen") {
     print(AXIsProcessTrusted() ? "Freigabe: ja" : "Freigabe: nein")

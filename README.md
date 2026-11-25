@@ -22,6 +22,7 @@
 - Startet eine App gerade oder kommt ein Öffnen-Dialog, wartet Queet etwas länger. Apps, die beim Laden ihr Fenster wechseln, werden nicht aus Versehen beendet.
 - Auch Apps, die sich beim Schließen nur verstecken, werden beendet.
 - Menüleisten-Apps und Hintergrundprogramme fasst Queet nie an. Der Finder bleibt immer offen.
+- Rechtsklick auf eine App im Finder und „App beenden“: Queet beendet sie normal und, wenn sie hängt, hart. Bei einem Sichern-Dialog wartet Queet, bis du dich entschieden hast.
 - Kein Datenversand, kein Konto, keine Werbung. Queet nutzt nur offizielle Schnittstellen von macOS und braucht kaum Speicher.
 
 ## Installieren
