@@ -13,7 +13,7 @@ cp Info.plist $A/Contents/
 xcrun actool Symbol.icon --compile $A/Contents/Resources --platform macosx --minimum-deployment-target 14.0 \
   --app-icon Symbol --output-partial-info-plist $B/icon.plist >/dev/null
 for arch in arm64 x86_64; do
-  swiftc -O -target $arch-apple-macos14.0 main.swift Einstellungen.swift Stil.swift -o $B/queet-$arch
+  swiftc -O -target $arch-apple-macos14.0 main.swift Einstellungen.swift Stil.swift Updater.swift -o $B/queet-$arch
 done
 lipo -create $B/queet-arm64 $B/queet-x86_64 -output $A/Contents/MacOS/queet
 K=(); [[ -n $QUEET_SCHLUESSELBUND ]] && K=(--keychain $QUEET_SCHLUESSELBUND)

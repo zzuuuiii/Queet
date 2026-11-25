@@ -90,6 +90,8 @@ enum EinstellungenApp {
         let haupt = NSMenu()
         let appItem = NSMenuItem()
         let appMenu = NSMenu()
+        appMenu.addItem(ClosureMenuItem("Nach Updates suchen …") { MainActor.assumeIsolated { Updater.suchen() } })
+        appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Queet ausblenden", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Einstellungen schließen", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -209,7 +211,10 @@ struct EinstellungenRoot: View {
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 ForEach(Array(einstellungen.verlauf.prefix(3)), id: \.id) { e in
-                    VerlaufZeile(bundleID: e.id, zeit: e.zeit, einstellungen: einstellungen)
+                    let nie = einstellungen.nieBeendet(e.id)
+                    AppReihe(bundleID: e.id, knopf: nie ? nil : "Nie beenden", hinweis: nie ? "Wird nie beendet" : nil) {
+                        einstellungen.nieBeenden(e.id)
+                    }
                 }
             }
 
@@ -223,7 +228,7 @@ struct EinstellungenRoot: View {
                             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     }
                     ForEach(einstellungen.liste, id: \.self) { id in
-                        AppZeile(bundleID: id) {
+                        AppReihe(bundleID: id, knopf: "Entfernen") {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
                                 einstellungen.liste.removeAll { $0 == id }
                             }
@@ -245,111 +250,55 @@ struct EinstellungenRoot: View {
     }
 }
 
-/// Zuletzt beendet: Symbol, Name, Uhrzeit; beim Darüberfahren „Nie beenden“.
-private struct VerlaufZeile: View {
+/// Name und Symbol einer App, einmal gelesen und gemerkt (sonst flackern die Symbole beim
+/// Darüberfahren, weil jede Neuzeichnung sie neu lädt)
+@MainActor private enum AppInfo {
+    static var cache: [String: (name: String, icon: NSImage?)] = [:]
+    static func lesen(_ id: String) -> (name: String, icon: NSImage?) {
+        if let c = cache[id] { return c }
+        var e: (name: String, icon: NSImage?) = (id, nil)
+        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
+            e = ((FileManager.default.displayName(atPath: url.path) as NSString).deletingPathExtension,
+                 NSWorkspace.shared.icon(forFile: url.path))
+        }
+        cache[id] = e; return e
+    }
+}
+
+/// Eine App in einer Liste: Symbol, Name; beim Darüberfahren grau hinterlegt mit einem Knopf rechts.
+/// Gleich für „Zuletzt beendet“ und „Ausnahmen“.
+private struct AppReihe: View {
     let bundleID: String
-    let zeit: Date
-    @ObservedObject var einstellungen: Einstellungen
+    let knopf: String?
+    var hinweis: String? = nil
+    let aktion: () -> Void
     @State private var hovering = false
 
-    private var appURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) }
-    private var name: String {
-        guard let url = appURL else { return bundleID }
-        return (FileManager.default.displayName(atPath: url.path) as NSString).deletingPathExtension
-    }
-    private var uhrzeit: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "de_DE")
-        if Calendar.current.isDateInToday(zeit) { f.dateFormat = "HH:mm" }
-        else if Calendar.current.isDateInYesterday(zeit) { f.dateFormat = "'Gestern' HH:mm" }
-        else { f.dateFormat = "d. MMM HH:mm" }
-        return f.string(from: zeit)
-    }
-
     var body: some View {
-        let nie = einstellungen.nieBeendet(bundleID)
+        let info = AppInfo.lesen(bundleID)
         HStack(spacing: 10) {
             Group {
-                if let url = appURL {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().interpolation(.high)
+                if let icon = info.icon {
+                    Image(nsImage: icon).resizable().interpolation(.high)
                 } else {
                     Image(systemName: "app.dashed").font(.system(size: 18)).foregroundStyle(.secondary)
                 }
             }
             .frame(width: 24, height: 24)
-            Text(name).font(.system(size: 13.5)).lineLimit(1)
+            Text(info.name).font(.system(size: 13.5)).lineLimit(1)
             Spacer(minLength: 8)
-            if hovering && !nie {
-                Button("Nie beenden") { einstellungen.nieBeenden(bundleID) }
-                    .buttonStyle(KlackButtonStyle())
-            } else {
-                Text(nie ? "Wird nie beendet" : uhrzeit)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
+            if hovering, let knopf {
+                Button(knopf, action: aktion).buttonStyle(KlackButtonStyle())
+            } else if let hinweis {
+                Text(hinweis).font(.system(size: 13)).foregroundStyle(.secondary)
             }
         }
         .padding(.horizontal, SettingsTheme.rowPadding)
         .frame(height: 44)
-        .background(Color.primary.opacity(hovering && !nie ? 0.04 : 0))
+        .background(Color.primary.opacity(hovering && knopf != nil ? 0.04 : 0))
         .contentShape(Rectangle())
         .onHover { hovering = $0 }
         .animation(.easeOut(duration: 0.12), value: hovering)
-    }
-}
-
-/// Eine App der Liste: Symbol, Name, Entfernen beim Darüberfahren (wie in BarDrop).
-private struct AppZeile: View {
-    let bundleID: String
-    let onRemove: () -> Void
-    @State private var hovering = false
-
-    private var appURL: URL? { NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) }
-
-    private var name: String {
-        guard let url = appURL else { return bundleID }
-        return (FileManager.default.displayName(atPath: url.path) as NSString).deletingPathExtension
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Group {
-                if let url = appURL {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
-                        .resizable()
-                        .interpolation(.high)
-                } else {
-                    Image(systemName: "app.dashed")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .frame(width: 24, height: 24)
-            Text(name)
-                .font(.system(size: 13.5))
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            Button(action: onRemove) {
-                Image(systemName: "minus.circle.fill")
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color.secondary)
-                    .frame(width: 26, height: 30)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("Entfernen")
-            .accessibilityLabel("Entfernen")
-            .opacity(hovering ? 1 : 0)
-            .allowsHitTesting(hovering)
-        }
-        .padding(.horizontal, SettingsTheme.rowPadding)
-        .frame(height: 44)
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
-        .animation(.easeOut(duration: 0.12), value: hovering)
-        .contextMenu {
-            Button("Entfernen", action: onRemove)
-        }
     }
 }
 

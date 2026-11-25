@@ -33,6 +33,8 @@
 
 Danach startet Queet bei jeder Anmeldung von selbst und läuft unsichtbar. Öffnest du Queet noch einmal, kommen die Einstellungen: ein- und ausschalten, Wartezeit und Apps, die nie beendet werden sollen.
 
+Neue Versionen holst du dir bei offenen Einstellungen über das Menü Queet > Nach Updates suchen.
+
 ## Lizenz
 
 GPL-3.0. Selbst bauen geht mit `./bauen.sh` (braucht Xcode).
