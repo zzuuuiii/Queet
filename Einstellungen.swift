@@ -64,6 +64,12 @@ enum EinstellungenApp {
     /// Eigener Prozess nur für das Fenster; er endet mit dem Fenster
     static func starten() {
         NSApplication.shared.delegate = delegat
+        // Für Produktbilder: QUEET_ERSCHEINUNG=hell|dunkel
+        switch ProcessInfo.processInfo.environment["QUEET_ERSCHEINUNG"] {
+        case "hell": NSApp.appearance = NSAppearance(named: .aqua)
+        case "dunkel": NSApp.appearance = NSAppearance(named: .darkAqua)
+        default: break
+        }
         zeigen()
     }
 

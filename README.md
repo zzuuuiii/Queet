@@ -16,6 +16,14 @@
   <a href="https://github.com/zzuuuiii/Queet/releases/latest/download/Queet.dmg"><b>Queet herunterladen</b></a> (DMG, macOS 14 oder neuer)
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Bilder/einstellungen-dunkel.png">
+    <img src="Bilder/einstellungen-hell.png" width="380" alt="Einstellungen von Queet">
+  </picture>
+  <img src="Bilder/rechtsklick.png" width="380" alt="Rechtsklick auf eine App im Finder mit „App beenden“">
+</p>
+
 ## Was Queet anders macht
 
 - Minimierte Fenster und Fenster auf anderen Schreibtischen oder im Vollbild halten die App offen. Was du noch brauchst, bleibt da.
