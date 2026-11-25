@@ -109,8 +109,13 @@ func pruefen(_ pid: pid_t, panel: Bool = false, versteckt: Bool = false, grund: 
     let f = frist(app0, panel: panel)
     // Normales Schließen des letzten Fensters: die App dahinter sofort nach vorn holen, nicht erst
     // nach dem Beenden (sonst bleibt der Fokus kurz bei der fensterlosen App)
-    if !panel, f == kurzeFrist(), app0.isActive, kandidat(app0), !(versteckt ? (!app0.isHidden || hatMinimiertes(app0)) : hatFenster(app0)) {
-        if let naechste = appDahinter(pid) { nachVorn(naechste) }
+    // (kurz warten, bis das Fenster aus der Liste verschwunden ist)
+    if !panel {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            guard app0.isActive, kandidat(app0), !(versteckt ? (!app0.isHidden || hatMinimiertes(app0)) : hatFenster(app0)),
+                  let naechste = appDahinter(pid) else { return }
+            nachVorn(naechste)
+        }
     }
     // Zweimal nachsehen: nach der Gnadenfrist und kurz danach noch einmal
     func offen(_ app: NSRunningApplication) -> Bool {
