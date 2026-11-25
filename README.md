@@ -17,7 +17,8 @@
 </p>
 
 <p align="center">
-  <img src="Bilder/einstellungen.png" width="380" alt="Einstellungen von Queet">
+  <img src="Bilder/einstellungen.png" width="45.6%" alt="Einstellungen von Queet">
+  <img src="Bilder/rechtsklick.png" width="51.4%" alt="Rechtsklick auf eine App im Finder mit „App beenden“">
 </p>
 
 ## Was Queet anders macht
@@ -30,11 +31,9 @@
 
 ## App beenden per Rechtsklick
 
-<p align="center">
-  <img src="Bilder/rechtsklick.png" width="380" alt="Rechtsklick auf eine App im Finder mit „App beenden“">
-</p>
+Du willst eine App löschen, aber sie läuft noch im Hintergrund? Rechtsklick auf die App im Finder, dann „App beenden“. Queet beendet sie zuerst normal und, wenn sie hängt, hart, samt allem, was von ihr noch läuft. Danach kannst du sie einfach in den Papierkorb legen.
 
-Rechtsklick auf eine App im Finder, dann „App beenden“. Queet beendet sie zuerst normal. Hängt sie, beendet Queet sie hart, samt allem, was von ihr noch im Hintergrund läuft. Bei einem Sichern-Dialog wartet Queet, bis du dich entschieden hast.
+Bei einem Sichern-Dialog wartet Queet, bis du dich entschieden hast.
 
 ## Installieren
 
