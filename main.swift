@@ -170,6 +170,18 @@ func merkeFenster(_ pid: pid_t, _ w: AXUIElement) {
     if let id = attr(w, kAXIdentifierAttribute) as String?, id == "open-panel" || id == "save-panel" { rolle = "panel" }
     unterrollen[pid, default: []].append((w, rolle))
     if rolle == kAXStandardWindowSubrole as String { hatteHauptfenster.insert(pid) }
+    // Ganz frische Fenster haben oft noch keine Unterrolle. Dann später nachlesen, sonst löst
+    // ihr Schließen (über das Menü oder einen Knopf in der App) nichts aus.
+    if rolle == "?" {
+        for t in [0.3, 1.0, 3.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + t) {
+                guard let i = unterrollen[pid]?.firstIndex(where: { CFEqual($0.0, w) }), unterrollen[pid]![i].1 == "?",
+                      let neu = attr(w, kAXSubroleAttribute) as String? else { return }
+                unterrollen[pid]![i].1 = neu
+                if neu == kAXStandardWindowSubrole as String { hatteHauptfenster.insert(pid) }
+            }
+        }
+    }
 }
 
 /// War das geschlossene Fenster ein normales Fenster? Dialoge, Ladefenster und Paletten lösen nichts aus.
