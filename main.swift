@@ -359,8 +359,12 @@ func starteHintergrund() {
     }
 
     nc.addObserver(forName: NSWorkspace.didDeactivateApplicationNotification, object: nil, queue: .main) { n in
+        // Nur Apps, die erst nach Queet gestartet sind: Bei älteren kennt Queet Fenster auf anderen
+        // Schreibtischen und im Vollbild nicht und würde sie beim App-Wechsel fälschlich beenden
+        // (Safari am 2026-11-25 nach einem Neustart von Queet; bei Hush gemeldet, Issue #1)
         guard let app = n.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
-              hatteHauptfenster.contains(app.processIdentifier) else { return }
+              hatteHauptfenster.contains(app.processIdentifier),
+              let start = app.launchDate, let seit = beobachtetSeit, start > seit else { return }
         pruefen(app.processIdentifier, grund: "App gewechselt")
     }
 
@@ -376,26 +380,44 @@ func starteHintergrund() {
     starten()
 }
 
+/// Ab hier beobachtet Queet jede neu gestartete App von Anfang an
+var beobachtetSeit: Date?
+
 // Auf die Freigabe warten, ohne die App zu belasten
 func starten() {
     if AXIsProcessTrusted() {
+        beobachtetSeit = Date()
         AXUIElementSetMessagingTimeout(systemweit, 1.0)
         alleBeobachten(); klickBeobachten(); log("läuft"); return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 5) { starten() }
 }
 
-// MARK: Rechtsklick im Finder: „App beenden“
+// MARK: Rechtsklick im Finder: „App beenden“ und „Beenden und in den Papierkorb“
 
 /// Erst normal beenden, dann hart, zuletzt übrige Hilfsprozesse aus dem Programmpaket.
 /// Fragt die App nach (z. B. Sichern-Dialog), wartet Queet, bis man sich entschieden hat.
+/// Bricht man dort ab, bleibt die App offen.
 final class Dienste: NSObject {
     @objc func appBeenden(_ pb: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        ausfuehren(pb) { radikalBeenden($0) }
+    }
+
+    /// Wie „App beenden“, danach liegt die App im Papierkorb (wie beim Löschen im Finder, wiederherstellbar)
+    @objc func appLoeschen(_ pb: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        ausfuehren(pb) { paket in
+            guard !paket.hasPrefix("/System/") else { return }
+            if paket == Bundle.main.bundlePath { queetLoeschen(); return }
+            radikalBeenden(paket) { ok in if ok { inPapierkorb(paket) } }
+        }
+    }
+
+    private func ausfuehren(_ pb: NSPasteboard, _ tun: (String) -> Void) {
         let urls = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         // macOS holt Queet für den Dienst nach vorn: Fokus gleich zurück an den Finder
         let vorher = letzteFremdeApp
         if let vorher { nachVorn(vorher) }
-        for u in urls { radikalBeenden(u.resolvingSymlinksInPath().path) }
+        for u in urls { tun(u.resolvingSymlinksInPath().path) }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             if NSWorkspace.shared.frontmostApplication?.processIdentifier == getpid(), let vorher, !vorher.isTerminated { nachVorn(vorher) }
         }
@@ -404,6 +426,29 @@ final class Dienste: NSObject {
 let dienste = Dienste()
 /// Zuletzt aktive App außer Queet (für den Dienst)
 var letzteFremdeApp: NSRunningApplication?
+
+func inPapierkorb(_ paket: String) {
+    let url = URL(fileURLWithPath: paket)
+    NSWorkspace.shared.recycle([url]) { _, fehler in
+        guard let fehler else { log("In den Papierkorb: \(url.lastPathComponent)"); return }
+        log("Papierkorb fehlgeschlagen: \(fehler.localizedDescription)")
+        // Meist fehlen Rechte (z. B. App-Store-Apps): Der Finder fragt dann nach dem Passwort
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = "„\(url.deletingPathExtension().lastPathComponent)“ ist beendet, liegt aber noch nicht im Papierkorb."
+        a.informativeText = "Queet darf die App nicht verschieben. Leg sie im Finder in den Papierkorb, der Finder fragt dann nach deinem Passwort."
+        a.addButton(withTitle: "Im Finder zeigen"); a.addButton(withTitle: "Abbrechen")
+        if a.runModal() == .alertFirstButtonReturn { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+    }
+}
+
+/// Queet selbst löschen: Autostart austragen, andere Queet-Prozesse beenden, in den Papierkorb, beenden
+func queetLoeschen() {
+    try? SMAppService.mainApp.unregister()
+    NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+        .filter { $0.processIdentifier != getpid() }.forEach { $0.forceTerminate() }
+    NSWorkspace.shared.recycle([Bundle.main.bundleURL]) { _, _ in exit(0) }
+}
 
 /// Alle eigenen Prozesse, deren Programmdatei im Paket liegt
 func prozesseIn(_ paket: String) -> [pid_t] {
@@ -427,33 +472,40 @@ func fragtNach(_ app: NSRunningApplication) -> Bool {
     }
 }
 
-func radikalBeenden(_ paket: String) {
-    guard paket != Bundle.main.bundlePath else { return }
+/// `fertig(true)`, sobald nichts mehr aus dem Paket läuft; `fertig(false)`, wenn die App offen bleibt
+func radikalBeenden(_ paket: String, fertig: ((Bool) -> Void)? = nil) {
+    guard paket != Bundle.main.bundlePath else { fertig?(false); return }
     let apps = NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.resolvingSymlinksInPath().path == paket }
-    guard !apps.isEmpty || !prozesseIn(paket).isEmpty else { return }
+    guard !apps.isEmpty || !prozesseIn(paket).isEmpty else { fertig?(true); return }
     log("App beenden (Finder): \((paket as NSString).lastPathComponent)")
     apps.forEach { $0.terminate() }
-    nachsehen(paket, apps, schritt: 1)
+    nachsehen(paket, apps, schritt: 1, dialog: false, fertig: fertig)
 }
 
-private func nachsehen(_ paket: String, _ apps: [NSRunningApplication], schritt: Int) {
+private func nachsehen(_ paket: String, _ apps: [NSRunningApplication], schritt: Int, dialog: Bool, fertig: ((Bool) -> Void)?) {
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         let offen = apps.filter { !$0.isTerminated }
         if !offen.isEmpty {
             // Ohne Freigabe sieht Queet keine Dialoge, dann nie hart beenden (ungesicherte Dokumente)
-            guard AXIsProcessTrusted() else { log("Hart beenden übersprungen: keine Freigabe"); return }
+            guard AXIsProcessTrusted() else { log("Hart beenden übersprungen: keine Freigabe"); fertig?(false); return }
             if offen.contains(where: fragtNach) {
-                if schritt < 600 { nachsehen(paket, apps, schritt: schritt + 1) } // bis zu 5 min
+                if schritt < 600 { nachsehen(paket, apps, schritt: schritt + 1, dialog: true, fertig: fertig) } // bis zu 5 min
+                else { fertig?(false) }
                 return
             }
-            if schritt < 6 { nachsehen(paket, apps, schritt: schritt + 1); return } // 3 s Zeit
+            // Dialog weg, App läuft noch: Beenden wurde abgebrochen, also offen lassen
+            if dialog { log("Beenden abgebrochen: \((paket as NSString).lastPathComponent)"); fertig?(false); return }
+            if schritt < 6 { nachsehen(paket, apps, schritt: schritt + 1, dialog: false, fertig: fertig); return } // 3 s Zeit
             for a in offen { log("Hart beendet: \(a.bundleIdentifier ?? "?")"); a.forceTerminate() }
         }
         // Hilfsprozesse kurz nachlaufen lassen, dann erst sanft, dann hart
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            let rest = prozesseIn(paket); guard !rest.isEmpty else { return }
+            let rest = prozesseIn(paket); guard !rest.isEmpty else { fertig?(true); return }
             log("Beende \(rest.count) übrige Prozesse"); rest.forEach { kill($0, SIGTERM) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { prozesseIn(paket).forEach { kill($0, SIGKILL) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                prozesseIn(paket).forEach { kill($0, SIGKILL) }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { fertig?(prozesseIn(paket).isEmpty) }
+            }
         }
     }
 }

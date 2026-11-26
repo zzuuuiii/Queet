@@ -31,7 +31,7 @@
 
 ## App beenden per Rechtsklick
 
-Du willst eine App löschen, aber sie läuft noch im Hintergrund? Rechtsklick auf die App im Finder, dann „App beenden“. Queet beendet sie zuerst normal und, wenn sie hängt, hart, samt allem, was von ihr noch läuft. Danach kannst du sie einfach in den Papierkorb legen.
+Du willst eine App löschen, aber sie läuft noch im Hintergrund? Rechtsklick auf die App im Finder, dann „App beenden“. Queet beendet sie zuerst normal und, wenn sie hängt, hart, samt allem, was von ihr noch läuft. Mit „Beenden und in den Papierkorb“ landet sie danach gleich im Papierkorb.
 
 Bei einem Sichern-Dialog wartet Queet, bis du dich entschieden hast.
 
